@@ -616,7 +616,7 @@ func authenticate(inner AuthorizationHandler, h *Handler, requireAuthentication 
 }
 
 // Check if user is authorized to perform request.
-func authorizeRequest(w http.ResponseWriter, r *http.Request, user auth.User) error {
+func authorizeRequest(r *http.Request, user auth.User) (bool, error) {
 	// Now that we have a user authorize the request
 	action := auth.Action{
 		Resource: r.URL.Path,
@@ -628,8 +628,8 @@ func authorizeRequest(w http.ResponseWriter, r *http.Request, user auth.User) er
 // Authorize the request and call normal inner handler.
 func authorize(inner http.HandlerFunc) AuthorizationHandler {
 	return func(w http.ResponseWriter, r *http.Request, user auth.User) {
-		if err := authorizeRequest(w, r, user); err != nil {
-			HttpError(w, err.Error(), false, http.StatusUnauthorized)
+		if authorized, err := authorizeRequest(r, user); !authorized {
+			HttpError(w, err.Error(), false, http.StatusForbidden)
 			return
 		}
 		inner(w, r)
@@ -639,8 +639,8 @@ func authorize(inner http.HandlerFunc) AuthorizationHandler {
 // Authorize the request and forward user to inner handler.
 func authorizeForward(inner AuthorizationHandler) AuthorizationHandler {
 	return func(w http.ResponseWriter, r *http.Request, user auth.User) {
-		if err := authorizeRequest(w, r, user); err != nil {
-			HttpError(w, err.Error(), false, http.StatusUnauthorized)
+		if authorized, err := authorizeRequest(r, user); !authorized {
+			HttpError(w, err.Error(), false, http.StatusForbidden)
 			return
 		}
 		inner(w, r, user)

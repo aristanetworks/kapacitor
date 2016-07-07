@@ -2,7 +2,6 @@ package auth
 
 import (
 	"fmt"
-	"log"
 	"path"
 	"strings"
 
@@ -21,10 +20,9 @@ type Privilege int
 const (
 	NoPrivileges Privilege = 1 << iota
 
-	GETPrivilege
-	POSTPrivilege
-	PATCHPrivilege
-	DELETEPrivilege
+	ReadPrivilege
+	WritePrivilege
+	DeletePrivilege
 
 	AllPrivileges
 )
@@ -33,14 +31,12 @@ func (p Privilege) String() string {
 	switch p {
 	case NoPrivileges:
 		return "NO_PRIVILEGES"
-	case GETPrivilege:
-		return "GET"
-	case POSTPrivilege:
-		return "POST"
-	case PATCHPrivilege:
-		return "PATCH"
-	case DELETEPrivilege:
-		return "DELETE"
+	case ReadPrivilege:
+		return "read"
+	case WritePrivilege:
+		return "write"
+	case DeletePrivilege:
+		return "delete"
 	case AllPrivileges:
 		return "ALL_PRIVILEGES"
 	default:
@@ -55,16 +51,16 @@ type Action struct {
 
 func (a Action) RequiredPrivilege() (Privilege, error) {
 	switch m := strings.ToUpper(a.Method); m {
-	case "HEAD", "OPTIONS", "GET":
-		return GETPrivilege, nil
-	case "POST":
-		return POSTPrivilege, nil
-	case "PATCH":
-		return PATCHPrivilege, nil
+	case "HEAD", "OPTIONS":
+		return NoPrivileges, nil
+	case "GET":
+		return ReadPrivilege, nil
+	case "POST", "PATCH":
+		return WritePrivilege, nil
 	case "DELETE":
-		return DELETEPrivilege, nil
+		return DeletePrivilege, nil
 	default:
-		return NoPrivileges, fmt.Errorf("unknown method %q", m)
+		return AllPrivileges, fmt.Errorf("unknown method %q", m)
 	}
 }
 
@@ -79,6 +75,14 @@ type User struct {
 
 // Create a user with the given privileges.
 func NewUser(name string, actionPrivileges map[string]Privilege, dbPrivileges map[string]influxql.Privilege) User {
+	// Clean privileges
+	for resource, privilege := range actionPrivileges {
+		clean := path.Clean(resource)
+		if clean != resource {
+			delete(actionPrivileges, resource)
+			actionPrivileges[clean] = privilege
+		}
+	}
 	return User{
 		name:             name,
 		actionPrivileges: actionPrivileges,
@@ -108,10 +112,7 @@ func (u User) AuthorizeAction(action Action) (bool, error) {
 	if err != nil {
 		return false, errors.Wrap(err, "cannot authorize invalid action")
 	}
-	if rp == NoPrivileges {
-		return false, errors.New("cannot authorize invalid action")
-	}
-	if u.admin {
+	if rp == NoPrivileges || u.admin {
 		return true, nil
 	}
 	// Find a matching resource of the form /path/to/resource
@@ -122,8 +123,7 @@ func (u User) AuthorizeAction(action Action) (bool, error) {
 	}
 	if len(u.actionPrivileges) > 0 {
 		resource := action.Resource
-		for resource != "" {
-			log.Println("resource", resource)
+		for {
 			if p, ok := u.actionPrivileges[resource]; ok {
 				// Found matching resource
 				authorized := p&rp != 0 || p == AllPrivileges
@@ -133,11 +133,18 @@ func (u User) AuthorizeAction(action Action) (bool, error) {
 					break
 				}
 			}
+			if resource == "/" {
+				break
+			}
 			// Pop off the last piece of the resource and try again
-			resource, _ = path.Split(strings.TrimSuffix(resource, "/"))
+			resource, _ = path.Split(resource)
+			if l := len(resource); l > 1 {
+				//Remove trailing slash
+				resource = resource[:l-1]
+			}
 		}
 	}
-	return false, fmt.Errorf("user %s does not have %v privilege for resource %q", u.name, rp, action.Resource)
+	return false, fmt.Errorf("user %s does not have \"%v\" privilege for resource %q", u.name, rp, action.Resource)
 }
 
 // Authorize returns true if the user is authorized and false if not.
