@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"log"
 	"path"
 	"strings"
 
@@ -67,14 +68,6 @@ func (a Action) RequiredPrivilege() (Privilege, error) {
 	}
 }
 
-// Validate the action contains sane data.
-func (a Action) Validate() error {
-	if _, err := a.RequiredPrivilege(); err != nil {
-		return err
-	}
-	return nil
-}
-
 type User struct {
 	name  string
 	admin bool
@@ -110,40 +103,41 @@ func (u User) Name() string {
 }
 
 // Determine wether the user is authorized to take the action.
-func (u User) AuthorizeAction(action Action) error {
+func (u User) AuthorizeAction(action Action) (bool, error) {
 	rp, err := action.RequiredPrivilege()
 	if err != nil {
-		return errors.Wrap(err, "cannot authorize invalid action")
+		return false, errors.Wrap(err, "cannot authorize invalid action")
 	}
 	if rp == NoPrivileges {
-		return errors.New("cannot authorize invalid action")
+		return false, errors.New("cannot authorize invalid action")
 	}
 	if u.admin {
-		return nil
+		return true, nil
 	}
 	// Find a matching resource of the form /path/to/resource
 	// where if the resource is /a/b/c and the user has permision to /a/b
 	// then it is considered valid.
 	if !path.IsAbs(action.Resource) {
-		return fmt.Errorf("invalid action resource: %q, must be an absolute path", action.Resource)
+		return false, fmt.Errorf("invalid action resource: %q, must be an absolute path", action.Resource)
 	}
-	if len(u.actionPrivileges) == 0 {
+	if len(u.actionPrivileges) > 0 {
 		resource := action.Resource
-		for resource != "/" {
+		for resource != "" {
+			log.Println("resource", resource)
 			if p, ok := u.actionPrivileges[resource]; ok {
 				// Found matching resource
 				authorized := p&rp != 0 || p == AllPrivileges
 				if authorized {
-					return nil
+					return true, nil
 				} else {
 					break
 				}
 			}
 			// Pop off the last piece of the resource and try again
-			resource, _ = path.Split(resource)
+			resource, _ = path.Split(strings.TrimSuffix(resource, "/"))
 		}
 	}
-	return fmt.Errorf("user %s does not have %v privilege for resource %q", u.name, rp, action.Resource)
+	return false, fmt.Errorf("user %s does not have %v privilege for resource %q", u.name, rp, action.Resource)
 }
 
 // Authorize returns true if the user is authorized and false if not.
