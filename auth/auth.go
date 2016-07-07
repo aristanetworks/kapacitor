@@ -122,7 +122,7 @@ func (u User) AuthorizeAction(action Action) (bool, error) {
 		return false, fmt.Errorf("invalid action resource: %q, must be an absolute path", action.Resource)
 	}
 	if len(u.actionPrivileges) > 0 {
-		resource := action.Resource
+		resource := path.Clean(action.Resource)
 		for {
 			if p, ok := u.actionPrivileges[resource]; ok {
 				// Found matching resource

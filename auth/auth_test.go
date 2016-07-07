@@ -580,6 +580,30 @@ func Test_User_AuthorizeAction(t *testing.T) {
 			authorized: false,
 			err:        errors.New("cannot authorize invalid action: unknown method \"PUT\""),
 		},
+		{
+			username: "cleverbob",
+			actionPrivileges: map[string]auth.Privilege{
+				"/a/d/e/f": auth.ReadPrivilege,
+			},
+			action: auth.Action{
+				Resource: "/a/b/c/../../d/e/f",
+				Method:   "GET",
+			},
+			authorized: true,
+			err:        nil,
+		},
+		{
+			username: "hackerbob",
+			actionPrivileges: map[string]auth.Privilege{
+				"/a/b": auth.WritePrivilege,
+			},
+			action: auth.Action{
+				Resource: "/a/b/c/../../d/e/f",
+				Method:   "POST",
+			},
+			authorized: false,
+			err:        errors.New(`user hackerbob does not have "write" privilege for resource "/a/b/c/../../d/e/f"`),
+		},
 	}
 	for _, tc := range testCases {
 		u := auth.NewUser(tc.username, tc.actionPrivileges, nil)
