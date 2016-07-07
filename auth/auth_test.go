@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/influxdata/influxdb/influxql"
 	"github.com/influxdata/kapacitor/auth"
 )
 
@@ -185,6 +186,7 @@ func Test_User_Name(t *testing.T) {
 func Test_User_AuthorizeAction(t *testing.T) {
 	testCases := []struct {
 		username         string
+		admin            bool
 		actionPrivileges map[string]auth.Privilege
 		action           auth.Action
 		authorized       bool
@@ -604,9 +606,36 @@ func Test_User_AuthorizeAction(t *testing.T) {
 			authorized: false,
 			err:        errors.New(`user hackerbob does not have "write" privilege for resource "/a/b/c/../../d/e/f"`),
 		},
+		{
+			username: "hackerjim",
+			actionPrivileges: map[string]auth.Privilege{
+				"/a/b": auth.WritePrivilege,
+			},
+			action: auth.Action{
+				Resource: "/a/b/c/../../../../d/e/f",
+				Method:   "POST",
+			},
+			authorized: false,
+			err:        errors.New(`user hackerjim does not have "write" privilege for resource "/a/b/c/../../../../d/e/f"`),
+		},
+		{
+			username: "admin",
+			admin:    true,
+			action: auth.Action{
+				Resource: "/a/b/c",
+				Method:   "POST",
+			},
+			authorized: true,
+			err:        nil,
+		},
 	}
 	for _, tc := range testCases {
-		u := auth.NewUser(tc.username, tc.actionPrivileges, nil)
+		var u auth.User
+		if tc.admin {
+			u = auth.AdminUser
+		} else {
+			u = auth.NewUser(tc.username, tc.actionPrivileges, nil)
+		}
 		authorized, err := u.AuthorizeAction(tc.action)
 		if err != nil {
 			if tc.err == nil {
@@ -621,6 +650,88 @@ func Test_User_AuthorizeAction(t *testing.T) {
 			if authorized != tc.authorized {
 				t.Errorf("%s: AUTH BREACH: got %t exp %t", tc.username, authorized, tc.authorized)
 			}
+		}
+	}
+}
+
+func Test_User_AuthorizeDB(t *testing.T) {
+	testCases := []struct {
+		username     string
+		admin        bool
+		dbPrivileges map[string]influxql.Privilege
+		privilege    influxql.Privilege
+		database     string
+		authorized   bool
+	}{
+		{
+			username: "bob",
+			dbPrivileges: map[string]influxql.Privilege{
+				"db": influxql.ReadPrivilege,
+			},
+			privilege:  influxql.ReadPrivilege,
+			database:   "db",
+			authorized: true,
+		},
+		{
+			username:   "jim",
+			privilege:  influxql.ReadPrivilege,
+			database:   "db",
+			authorized: false,
+		},
+		{
+			username: "sue",
+			dbPrivileges: map[string]influxql.Privilege{
+				"db": influxql.ReadPrivilege,
+			},
+			privilege:  influxql.WritePrivilege,
+			database:   "db",
+			authorized: false,
+		},
+		{
+			username: "tim",
+			dbPrivileges: map[string]influxql.Privilege{
+				"dbname": influxql.ReadPrivilege,
+			},
+			privilege:  influxql.ReadPrivilege,
+			database:   "db",
+			authorized: false,
+		},
+		{
+			username: "slim",
+			dbPrivileges: map[string]influxql.Privilege{
+				"dbname": influxql.AllPrivileges,
+			},
+			privilege:  influxql.ReadPrivilege,
+			database:   "dbname",
+			authorized: true,
+		},
+		{
+			username: "jill",
+			dbPrivileges: map[string]influxql.Privilege{
+				"dbname": influxql.AllPrivileges,
+			},
+			privilege:  influxql.WritePrivilege,
+			database:   "dbname",
+			authorized: true,
+		},
+		{
+			username:   "admin",
+			admin:      true,
+			privilege:  influxql.WritePrivilege,
+			database:   "dbname",
+			authorized: true,
+		},
+	}
+	for _, tc := range testCases {
+		var u auth.User
+		if tc.admin {
+			u = auth.AdminUser
+		} else {
+			u = auth.NewUser(tc.username, nil, tc.dbPrivileges)
+		}
+		authorized := u.AuthorizeDB(tc.privilege, tc.database)
+		if authorized != tc.authorized {
+			t.Errorf("%s: AUTH BREACH: got %t exp %t", tc.username, authorized, tc.authorized)
 		}
 	}
 }

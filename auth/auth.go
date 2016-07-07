@@ -122,6 +122,7 @@ func (u User) AuthorizeAction(action Action) (bool, error) {
 		return false, fmt.Errorf("invalid action resource: %q, must be an absolute path", action.Resource)
 	}
 	if len(u.actionPrivileges) > 0 {
+		// Clean path to prevent path traversal like /a/b/../d when user has access to /a/b
 		resource := path.Clean(action.Resource)
 		for {
 			if p, ok := u.actionPrivileges[resource]; ok {
@@ -137,11 +138,7 @@ func (u User) AuthorizeAction(action Action) (bool, error) {
 				break
 			}
 			// Pop off the last piece of the resource and try again
-			resource, _ = path.Split(resource)
-			if l := len(resource); l > 1 {
-				//Remove trailing slash
-				resource = resource[:l-1]
-			}
+			resource = path.Dir(resource)
 		}
 	}
 	return false, fmt.Errorf("user %s does not have \"%v\" privilege for resource %q", u.name, rp, action.Resource)
