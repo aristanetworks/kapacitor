@@ -1,0 +1,46 @@
+var MAX_NOUPDATE_PERIOD = 1h
+var SERVER_DISCOVERY_WINDOW = 12w
+var HOST_CHECK_PERIOD = 1m
+var UPDATES_IN_MAX_NOUPDATE_PERIOD = 240
+
+// fetch all hosts available in SERVER_DISCOVERY_WINDOW
+// and find the hosts that have not updated in MAX_NOUPDATE_PERIOD
+// generate new points using UDF withoutUpdates with fields
+// missingUpdates and expectedUpdates
+var hosts = batch
+  |Query('''
+    SELECT last(uptime) as last_uptime
+    FROM ServerStats."default".system
+  ''')
+    .period(SERVER_DISCOVERY_WINDOW)
+    .every(HOST_CHECK_PERIOD)
+    .groupBy('host')
+  @withoutUpdates()
+    .period(MAX_NOUPDATE_PERIOD)
+    .roundDuration(HOST_CHECK_PERIOD)
+  |eval(lambda: "noupdates", lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD, lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD)
+    .as('failed', 'missingUpdates', 'expectedUpdates')
+    .keep('missingUpdates', 'expectedUpdates')
+
+hosts
+  |influxDBOut()
+    .database('ServerStats')
+    .retentionPolicy('default')
+    .measurement('hostStatus')
+
+hosts
+  |count('missingUpdates')
+  |httpOut('downservers')
+  |alert()
+    .stateChangesOnly()
+    .crit(lambda: "count" > 0)
+    .id('kapacitor/{{ .TaskName }}/{{ index .Tags "host" }}')
+    .message('{{ .Level }} - host down alert for Host {{ index .Tags "host" }}')
+    .details('''
+      <pre>
+        Kapacitor task {{ .TaskName }} raised {{ .Level }} alert on {{ index .Tags "host" }} at {{ .Time }}
+      </pre>
+    ''')
+    .email('kthommandra@arista.com')
+    .log('/var/log/kapacitor/tick-hostdown.log')
+
