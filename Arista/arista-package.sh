@@ -30,15 +30,20 @@ VENDOR=Influxdata
 
 set -e
 
-# Get version from tag closest to HEAD
+# NOTE: using a commit that works. The latest code
+#       causes TICK scripts to fail. The issue is under
+#       investigation with Influxdata team
 COMMIT="e64b52e05dd7c888fe0549a06db3cac118a63dec"
 
+# Get version from tag closest to HEAD
 version=$(git describe --tags --abbrev=0 $COMMIT | sed 's/^v//' )
 
 # Build and install the latest code
 echo "Building and Installing Kapacitor ($COMMIT)"
-# specific commit of last know working version is used
 cd ${KAPACITOR_ROOT} && ./build.py --commit $COMMIT && cd -
+# NOTE: need to analyze the test failures before enabling this
+#       we don't change any core kapacitor code so the failures
+#       aren't due to our changes
 #cd ${KAPACITOR_ROOT} && ./build.py --test && cd -
 
 echo "Building Arista UDFs"
@@ -75,8 +80,11 @@ do
     cp ${KAPACITOR_ROOT}/build/$binary $TMP_BIN_DIR
 done
 
-fpm -s dir -t rpm $BINARY_FPM_ARGS --description "$DESCRIPTION" -n "kapacitor-server" kapacitord || cleanup_exit 1
-fpm -s dir -t rpm $BINARY_FPM_ARGS -d kapacitor-server --description "$DESCRIPTION" -n "kapacitor-client" kapacitor tickfmt || cleanup_exit 1
+fpm -s dir -t rpm $BINARY_FPM_ARGS --description "$DESCRIPTION" \
+   -n "kapacitor-server" kapacitord || cleanup_exit 1
+fpm -s dir -t rpm $BINARY_FPM_ARGS -d kapacitor-server \
+   --description "$DESCRIPTION" -n "kapacitor-client" \
+   kapacitor tickfmt || cleanup_exit 1
 
 mv ./*.rpm RPMS
 
@@ -98,13 +106,16 @@ mkdir $TMP_CONFIG_DIR > /dev/null 2>&1 || rm -rf $TMP_CONFIG_DIR/*
 mkdir -p $TMP_CONFIG_DIR/etc/default
 cp $CONFIG_FILES_DIR/kapacitor.default $TMP_CONFIG_DIR/etc/default/kapacitor
 mkdir -p $TMP_CONFIG_DIR/etc/logrotate.d
-cp $CONFIG_FILES_DIR/kapacitor.logrotate $TMP_CONFIG_DIR/etc/logrotate.d/kapacitor
+cp $CONFIG_FILES_DIR/kapacitor.logrotate \
+   $TMP_CONFIG_DIR/etc/logrotate.d/kapacitor
 mkdir -p $TMP_CONFIG_DIR/lib/systemd/system
-cp $CONFIG_FILES_DIR/kapacitor.service $TMP_CONFIG_DIR/lib/systemd/system/kapacitor.service
+cp $CONFIG_FILES_DIR/kapacitor.service \
+   $TMP_CONFIG_DIR/lib/systemd/system/kapacitor.service
 mkdir -p $TMP_CONFIG_DIR/etc/kapacitor
 
 # Linux-Config
-cp $CONFIG_FILES_DIR/kapacitor-linux.conf $TMP_CONFIG_DIR/etc/kapacitor/kapacitor.conf
+cp $CONFIG_FILES_DIR/kapacitor-linux.conf \
+   $TMP_CONFIG_DIR/etc/kapacitor/kapacitor.conf
 
 mkdir $TMP_CONFIG_DIR/etc/kapacitor/ticks
 for udf in {"withoutUpdates","countle"}
@@ -116,7 +127,8 @@ do
    cp Ticks/${tick}.tick $TMP_CONFIG_DIR/etc/kapacitor/ticks/
 done
 
-fpm -s dir -t rpm $CONFIG_FPM_ARGS --description "Linux configuration" -n "kapacitor-Linux" etc lib || cleanup_exit 1
+fpm -s dir -t rpm $CONFIG_FPM_ARGS --description "ServerStats configuration" \
+   -n "kapacitor-ServerStats" etc lib || cleanup_exit 1
 
 mv ./*.rpm RPMS
 
