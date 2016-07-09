@@ -1,0 +1,2 @@
+STDERR=/persist/kapacitor/kapacitor.log
+STDOUT=/dev/null

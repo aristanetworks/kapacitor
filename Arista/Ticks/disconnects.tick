@@ -1,0 +1,28 @@
+var UPDATES_IN_DISCONNECT_CHECK = 240
+var UPDATES_IN_ONE_DISCONNECT = 40
+var DISCONNECTS_CHECK_PERIOD = 1h
+var HOST_CHECK_PERIOD = 1m
+
+// find the number of updates from different
+// hosts in DISCONNECTS_CHECK_PERIOD. This
+// automatically skips the hosts that did not
+// send any updates in this time period. Find hosts
+// which had at least some noticeable disconnects
+// based on threshold 
+batch
+  |query('''
+    SELECT count(uptime)
+    FROM ServerStats."default".system
+  ''')
+    .period(DISCONNECTS_CHECK_PERIOD)
+    .every(HOST_CHECK_PERIOD)
+    .groupBy('host')
+  @countle()
+    .threshold(UPDATES_IN_ONE_DISCONNECT)
+    .roundDuration(HOST_CHECK_PERIOD)
+  |eval(lambda: UPDATES_IN_DISCONNECT_CHECK - int("count"), lambda: UPDATES_IN_DISCONNECT_CHECK)
+       .as('missingUpdates', 'expectedUpdates')
+  |influxDBOut()
+    .database('ServerStats')
+    .retentionPolicy('default')
+    .measurement('hostStatus')

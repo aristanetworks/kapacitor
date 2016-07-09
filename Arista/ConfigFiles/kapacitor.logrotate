@@ -1,0 +1,20 @@
+/var/log/kapacitor/kapacitor.log
+{
+    rotate 7
+    daily
+    missingok
+    dateext
+    copytruncate
+    notifempty
+    compress
+}
+/var/log/kapacitor/tick-hostdown.log
+{
+    rotate 7
+    daily
+    missingok
+    dateext
+    copytruncate
+    notifempty
+    compress
+}
