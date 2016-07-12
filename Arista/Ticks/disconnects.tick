@@ -1,7 +1,7 @@
 var UPDATES_IN_DISCONNECT_CHECK = 240
 var UPDATES_IN_ONE_DISCONNECT = 40
 var DISCONNECTS_CHECK_PERIOD = 1h
-var HOST_CHECK_PERIOD = 1m
+var HOST_CHECK_PERIOD = 15m
 
 // find the number of updates from different
 // hosts in DISCONNECTS_CHECK_PERIOD. This
@@ -18,7 +18,7 @@ batch
     .every(HOST_CHECK_PERIOD)
     .groupBy('host')
   @countle()
-    .threshold(UPDATES_IN_ONE_DISCONNECT)
+    .threshold(UPDATES_IN_DISCONNECT_CHECK - UPDATES_IN_ONE_DISCONNECT)
     .roundDuration(HOST_CHECK_PERIOD)
   |eval(lambda: UPDATES_IN_DISCONNECT_CHECK - int("count"), lambda: UPDATES_IN_DISCONNECT_CHECK)
        .as('missingUpdates', 'expectedUpdates')

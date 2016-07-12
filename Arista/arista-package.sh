@@ -19,7 +19,7 @@ GOBIN=$GOPATH/bin
 TMP_BIN_DIR=./rpm_bin
 TMP_CONFIG_DIR=./rpm_config
 CONFIG_FILES_DIR=./ConfigFiles
-CONFIG_FILES_VER=1.2
+CONFIG_FILES_VER=1.3
 CONFIG_FILES_ITER=1
 KAPACITOR_ROOT=..
 
@@ -30,17 +30,12 @@ VENDOR=Influxdata
 
 set -e
 
-# NOTE: using a commit that works. The latest code
-#       causes TICK scripts to fail. The issue is under
-#       investigation with Influxdata team
-COMMIT="e64b52e05dd7c888fe0549a06db3cac118a63dec"
-
 # Get version from tag closest to HEAD
-version=$(git describe --tags --abbrev=0 $COMMIT | sed 's/^v//' )
+version=$(git describe --tags --abbrev=0 | sed 's/^v//' )
 
 # Build and install the latest code
-echo "Building and Installing Kapacitor ($COMMIT)"
-cd ${KAPACITOR_ROOT} && ./build.py --commit $COMMIT && cd -
+echo "Building and Installing Kapacitor"
+cd ${KAPACITOR_ROOT} && ./build.py && cd -
 # NOTE: need to analyze the test failures before enabling this
 #       we don't change any core kapacitor code so the failures
 #       aren't due to our changes

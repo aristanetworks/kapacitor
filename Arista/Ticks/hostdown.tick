@@ -1,12 +1,13 @@
 var MAX_NOUPDATE_PERIOD = 1h
 var SERVER_DISCOVERY_WINDOW = 12w
-var HOST_CHECK_PERIOD = 1m
+var HOST_CHECK_PERIOD = 15m
 var UPDATES_IN_MAX_NOUPDATE_PERIOD = 240
 
 // fetch all hosts available in SERVER_DISCOVERY_WINDOW
 // and find the hosts that have not updated in MAX_NOUPDATE_PERIOD
-// generate new points using UDF withoutUpdates with fields
-// missingUpdates and expectedUpdates
+// using UDF (withoutUpdates) add noupdates=2 field for servers which
+// have not updated within MAX_NOUPDATE_PERIOD and noupdates=1 for
+// servers which have updated, at least once, within MAX_NOUPDATE_PERIOD
 var hosts = batch
   |Query('''
     SELECT last(uptime) as last_uptime
@@ -18,29 +19,32 @@ var hosts = batch
   @withoutUpdates()
     .period(MAX_NOUPDATE_PERIOD)
     .roundDuration(HOST_CHECK_PERIOD)
-  |eval(lambda: "noupdates", lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD, lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD)
-    .as('failed', 'missingUpdates', 'expectedUpdates')
-    .keep('missingUpdates', 'expectedUpdates')
 
+// raise critical alert for servers which haven't updated within
+// MAX_NOUPDATE_PERIOD
 hosts
-  |influxDBOut()
-    .database('ServerStats')
-    .retentionPolicy('default')
-    .measurement('hostStatus')
-
-hosts
-  |count('missingUpdates')
-  |httpOut('downservers')
   |alert()
-    .stateChangesOnly()
-    .crit(lambda: "count" > 0)
+    .StateChangesOnly()
+    .crit(lambda: "noupdates" == 2)
     .id('kapacitor/{{ .TaskName }}/{{ index .Tags "host" }}')
     .message('{{ .Level }} - host down alert for Host {{ index .Tags "host" }}')
     .details('''
       <pre>
-        Kapacitor task {{ .TaskName }} raised {{ .Level }} alert on {{ index .Tags "host" }} at {{ .Time }}
+        Kapacitor task {{ .TaskName }} raised {{ .Level }} alert for {{ index .Tags "host" }} at {{ .Time }}
       </pre>
     ''')
     .email('kthommandra@arista.com')
     .log('/var/log/kapacitor/tick-hostdown.log')
+
+// insert servers which haven't updated within MAX_NOUPDATE_PERIOD
+// into InfluxDB
+hosts
+  |where(lambda: "noupdates" == 2)
+  |eval(lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD, lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD)
+    .as('missingUpdates', 'expectedUpdates')
+    .keep('missingUpdates', 'expectedUpdates')
+  |influxDBOut()
+    .database('ServerStats')
+    .retentionPolicy('default')
+    .measurement('hostStatus')
 
