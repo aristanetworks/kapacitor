@@ -8,6 +8,13 @@ var UPDATES_IN_MAX_NOUPDATE_PERIOD = 240
 // using UDF (withoutUpdates) add noupdates=2 field for servers which
 // have not updated within MAX_NOUPDATE_PERIOD and noupdates=1 for
 // servers which have updated, at least once, within MAX_NOUPDATE_PERIOD
+
+// raise critical alert for servers which haven't updated within
+// MAX_NOUPDATE_PERIOD
+
+// insert servers which haven't updated within MAX_NOUPDATE_PERIOD
+// into InfluxDB
+
 var hosts = batch
   |Query('''
     SELECT last(uptime) as last_uptime
@@ -19,10 +26,6 @@ var hosts = batch
   @withoutUpdates()
     .period(MAX_NOUPDATE_PERIOD)
     .roundDuration(HOST_CHECK_PERIOD)
-
-// raise critical alert for servers which haven't updated within
-// MAX_NOUPDATE_PERIOD
-hosts
   |alert()
     .StateChangesOnly()
     .crit(lambda: "noupdates" == 2)
@@ -35,10 +38,6 @@ hosts
     ''')
     .email('kthommandra@arista.com')
     .log('/var/log/kapacitor/tick-hostdown.log')
-
-// insert servers which haven't updated within MAX_NOUPDATE_PERIOD
-// into InfluxDB
-hosts
   |where(lambda: "noupdates" == 2)
   |eval(lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD, lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD)
     .as('missingUpdates', 'expectedUpdates')
