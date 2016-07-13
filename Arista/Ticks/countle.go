@@ -117,7 +117,7 @@ func (o *countLeHandler) Point(p *udf.Point) error {
 
 func (o *countLeHandler) EndBatch(end *udf.EndBatch) error {
 	for _, older := range o.points {
-		log.Println("COUNTLE %+v", older)
+		//log.Println("COUNTLE %+v", older)
 		o.agent.Responses <- &udf.Response{
 			Message: &udf.Response_Point{
 				Point: older,

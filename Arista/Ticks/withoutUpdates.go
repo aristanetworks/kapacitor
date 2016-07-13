@@ -9,13 +9,12 @@ import (
 	"github.com/influxdata/kapacitor/udf/agent"
 )
 
-// This UDF generates new Points
-//   One new point for each point whose timestamp is older
-//   than now() - period. The timestamp of the new
-//   point is now(), a new int field called "noupdates" with
-//   value 1 is added to the point. The incoming point's
-//   attributes like Name, Group, Tags and Fields are kept as is
-//   in the new point.
+// This UDF adds a field noupdates to the incoming points
+//   noupdates=2 is the point is older than now() - period
+//   noupdates=1 otherwise
+//   The points with noupdates=2 have their timestamp
+//   rounded to roundDuration (this is for clairty
+//   when viewing points in Chronograf)
 type withoutUpdatesHandler struct {
 	period        int64
 	roundDuration int64
@@ -111,17 +110,20 @@ func (o *withoutUpdatesHandler) Point(p *udf.Point) error {
 
 		// Rounding off the point to duration of the UDF run
 		now := time.Now().UTC().UnixNano()
-
-		newP := &udf.Point{
-			Name:      p.Name,
-			Time:      now - (now % o.roundDuration),
-			Group:     p.Group,
-			Tags:      p.Tags,
-			FieldsInt: map[string]int64{"noupdates": 1},
+		p.Time = now - (now % o.roundDuration)
+		if nil == p.FieldsInt {
+			p.FieldsInt = map[string]int64{"noupdates": 2}
+		} else {
+			p.FieldsInt["noupdates"] = 2
 		}
-
-		o.addPoint(newP)
+	} else {
+		if nil == p.FieldsInt {
+			p.FieldsInt = map[string]int64{"noupdates": 1}
+		} else {
+			p.FieldsInt["noupdates"] = 1
+		}
 	}
+	o.addPoint(p)
 	return nil
 }
 
