@@ -34,6 +34,8 @@ var hosts = batch
     .details('''
       <pre>
         Kapacitor task {{ .TaskName }} raised {{ .Level }} alert for {{ index .Tags "host" }} at {{ .Time }}
+        CRITICAL alert state implies that the host {{ index .Tags "host" }} has not communicated with InfluxDB for an extended period.
+        OK alert is sent when the host transitions out of CRITICAL alert state.
       </pre>
     ''')
     .email('kthommandra@arista.com')
