@@ -1,3 +1,4 @@
+var UPDATE_EVERY = 15s
 var MAX_NOUPDATE_PERIOD = 1h
 var SERVER_DISCOVERY_WINDOW = 12w
 var HOST_CHECK_PERIOD = 15m
@@ -26,9 +27,12 @@ var hosts = batch
   @withoutUpdates()
     .period(MAX_NOUPDATE_PERIOD)
     .roundDuration(HOST_CHECK_PERIOD)
+    .updateDuration(UPDATE_EVERY)
+
+hosts
   |alert()
     .StateChangesOnly()
-    .crit(lambda: "noupdates" == 2)
+    .crit(lambda: "missingUpdates" == UPDATES_IN_MAX_NOUPDATE_PERIOD)
     .id('kapacitor/{{ .TaskName }}/{{ index .Tags "host" }}')
     .message('{{ .Level }} - host down alert for Host {{ index .Tags "host" }}')
     .details('''
@@ -40,8 +44,10 @@ var hosts = batch
     ''')
     .email('kthommandra@arista.com')
     .log('/var/log/kapacitor/tick-hostdown.log')
-  |where(lambda: "noupdates" == 2)
-  |eval(lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD, lambda: UPDATES_IN_MAX_NOUPDATE_PERIOD)
+
+hosts
+  |where(lambda: "missingUpdates" == UPDATES_IN_MAX_NOUPDATE_PERIOD)
+  |eval(lambda: "missingUpdates", lambda: "missingUpdates")
     .as('missingUpdates', 'expectedUpdates')
     .keep('missingUpdates', 'expectedUpdates')
   |influxDBOut()

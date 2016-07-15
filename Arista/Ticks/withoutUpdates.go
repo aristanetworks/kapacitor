@@ -9,17 +9,18 @@ import (
 	"github.com/influxdata/kapacitor/udf/agent"
 )
 
-// This UDF adds a field noupdates to the incoming points
-//   noupdates=2 is the point is older than now() - period
-//   noupdates=1 otherwise
-//   The points with noupdates=2 have their timestamp
-//   rounded to roundDuration (this is for clairty
-//   when viewing points in Chronograf)
+// This UDF adds a field missingUpdates to the incoming points
+//   The field missingUpdates counts the number of updates
+//   missed based on the point's time and period
+//   If the missingUpdates is equal to the max updates in
+//   period then the point is rounded to roundDuration
+//   (this is for clairty when viewing points in Chronograf)
 type withoutUpdatesHandler struct {
-	period        int64
-	roundDuration int64
-	points        []*udf.Point
-	agent         *agent.Agent
+	period         int64
+	roundDuration  int64
+	updateDuration int64
+	points         []*udf.Point
+	agent          *agent.Agent
 }
 
 func newWithoutUpdatesHandler(agent *agent.Agent) *withoutUpdatesHandler {
@@ -40,8 +41,9 @@ func (*withoutUpdatesHandler) Info() (*udf.InfoResponse, error) {
 		Wants:    udf.EdgeType_BATCH,
 		Provides: udf.EdgeType_BATCH,
 		Options: map[string]*udf.OptionInfo{
-			"period":        {ValueTypes: []udf.ValueType{udf.ValueType_DURATION}},
-			"roundDuration": {ValueTypes: []udf.ValueType{udf.ValueType_DURATION}},
+			"period":         {ValueTypes: []udf.ValueType{udf.ValueType_DURATION}},
+			"roundDuration":  {ValueTypes: []udf.ValueType{udf.ValueType_DURATION}},
+			"updateDuration": {ValueTypes: []udf.ValueType{udf.ValueType_DURATION}},
 		},
 	}
 	return info, nil
@@ -60,6 +62,8 @@ func (o *withoutUpdatesHandler) Init(r *udf.InitRequest) (*udf.InitResponse, err
 			o.period = opt.Values[0].Value.(*udf.OptionValue_DurationValue).DurationValue
 		case "roundDuration":
 			o.roundDuration = opt.Values[0].Value.(*udf.OptionValue_DurationValue).DurationValue
+		case "updateDuration":
+			o.updateDuration = opt.Values[0].Value.(*udf.OptionValue_DurationValue).DurationValue
 		}
 	}
 
@@ -112,15 +116,16 @@ func (o *withoutUpdatesHandler) Point(p *udf.Point) error {
 		now := time.Now().UTC().UnixNano()
 		p.Time = now - (now % o.roundDuration)
 		if nil == p.FieldsInt {
-			p.FieldsInt = map[string]int64{"noupdates": 2}
+			p.FieldsInt = map[string]int64{"missingUpdates": o.period / o.updateDuration}
 		} else {
-			p.FieldsInt["noupdates"] = 2
+			p.FieldsInt["missingUpdates"] = o.period / o.updateDuration
 		}
 	} else {
+		missedPeriod := time.Now().UTC().UnixNano() - p.Time
 		if nil == p.FieldsInt {
-			p.FieldsInt = map[string]int64{"noupdates": 1}
+			p.FieldsInt = map[string]int64{"missingUpdates": missedPeriod / o.updateDuration}
 		} else {
-			p.FieldsInt["noupdates"] = 1
+			p.FieldsInt["missingUpdates"] = missedPeriod / o.updateDuration
 		}
 	}
 	o.addPoint(p)
