@@ -73,6 +73,7 @@ func (s *Service) Alert(channel, message string, level kapacitor.AlertLevel) err
 	postData := make(map[string]interface{})
 	postData["channel"] = channel
 	postData["username"] = kapacitor.Product
+	postData["icon_url"] = "https://pbs.twimg.com/profile_images/674654746725056514/EHg3ZHtE.jpg"
 	postData["text"] = ""
 	postData["attachments"] = []attachment{a}
 
